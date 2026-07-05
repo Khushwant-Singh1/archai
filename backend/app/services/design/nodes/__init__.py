@@ -1,4 +1,4 @@
-from services.design.nodes.extractor import extract_modules, split_document
+from services.design.nodes.extractor import extract_modules, split_document, extract_structured_requirements
 from services.design.nodes.fetch_context import fetch_context_node
 from services.design.nodes.dba_agent import dba_agent_node
 from services.design.nodes.qa_agent import qa_agent_node

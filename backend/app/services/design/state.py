@@ -34,6 +34,7 @@ class GraphState(TypedDict):
     security_protocols:  str   # e.g. "Row-Level Security, AES-256 at rest"
     open_questions_answers: str # user responses to open questions
     cloud_provider:      str   # e.g. "aws", "gcp", "azure"
+    structured_requirements: Dict[str, Any] # extracted structured requirements from SRS
 
 
 class ModuleGraphState(TypedDict):
@@ -65,3 +66,4 @@ class ModuleGraphState(TypedDict):
     security_protocols:  str   # e.g. "Row-Level Security, AES-256 at rest"
     open_questions_answers: str # user responses to open questions
     cloud_provider:      str   # e.g. "aws", "gcp", "azure"
+    structured_requirements: Dict[str, Any] # extracted structured requirements from SRS

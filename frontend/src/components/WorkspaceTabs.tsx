@@ -1,10 +1,11 @@
 import React from "react";
 
 interface WorkspaceTabsProps {
-  activeTab: "architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap";
+  activeTab: "architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap" | "validation";
   previewMode: boolean;
-  onTabChange: (tab: "architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap") => void;
+  onTabChange: (tab: "architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap" | "validation") => void;
   onPreviewModeChange: (preview: boolean) => void;
+  hasValidationIssues?: boolean;
 }
 
 export function WorkspaceTabs({
@@ -12,6 +13,7 @@ export function WorkspaceTabs({
   previewMode,
   onTabChange,
   onPreviewModeChange,
+  hasValidationIssues = false,
 }: WorkspaceTabsProps) {
   return (
     <div className="bg-slate-900/40 border-b border-white/10 px-6 py-2.5 flex flex-col sm:flex-row gap-3 items-center justify-between select-none">
@@ -143,6 +145,22 @@ export function WorkspaceTabs({
           </svg>
           Original Requirements
         </button>
+
+        {hasValidationIssues && (
+          <button
+            onClick={() => onTabChange("validation")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition flex items-center gap-2 cursor-pointer ${
+              activeTab === "validation"
+                ? "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)]"
+                : "text-red-400/70 hover:text-red-400 hover:bg-red-500/5 border border-transparent"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            Validation Issues
+          </button>
+        )}
       </div>
 
       {/* View options */}

@@ -170,3 +170,60 @@ async def extract_modules(normalized_text: str, constraints: str = "") -> List[s
 
     logger.info(f"[extractor] Found {len(modules)} modules: {modules}")
     return modules
+
+
+async def extract_structured_requirements(normalized_text: str) -> Dict[str, Any]:
+    """
+    Ask the LLM to parse the SRS document and extract structured requirements.
+    """
+    logger.info("[extractor] Extracting structured requirements from SRS...")
+    prompt = (
+        "Read the provided Software Requirements Specification (SRS) document below and extract a structured JSON representation of its requirements.\n"
+        "Your output MUST be a valid JSON object containing exactly the following keys:\n"
+        "1. 'functional_requirements': A list of strings describing the core functional requirements.\n"
+        "2. 'non_functional_requirements': A list of strings describing non-functional requirements (e.g., performance, uptime, compliance).\n"
+        "3. 'business_domain': A string identifying the business domain (e.g., 'Fintech', 'EdTech', 'Healthcare').\n"
+        "4. 'users': A list of strings representing the different user roles or actors (e.g., 'Customer', 'Admin', 'Support').\n"
+        "5. 'integrations': A list of strings representing external systems or third-party integrations (e.g., 'Stripe', 'Twilio', 'SendGrid').\n"
+        "6. 'constraints': A list of strings detailing technical or business constraints (e.g., 'AWS', 'PostgreSQL', 'GDPR compliance').\n\n"
+        "Output ONLY the JSON object, no other text or markdown formatting.\n\n"
+        f"SRS Document:\n{normalized_text[:16000]}"
+    )
+    
+    model = get_chat_model(temperature=0.0, fast=True)
+    response = await model.ainvoke([HumanMessage(content=prompt)])
+    
+    requirements: Dict[str, Any] = {
+        "functional_requirements": [],
+        "non_functional_requirements": [],
+        "business_domain": "Unknown",
+        "users": [],
+        "integrations": [],
+        "constraints": []
+    }
+    
+    try:
+        content = response.content.strip()
+        for fence in ("```json", "```"):
+            if content.startswith(fence):
+                content = content[len(fence):]
+        if content.endswith("```"):
+            content = content[:-3]
+        parsed = json.loads(content.strip())
+        if isinstance(parsed, dict):
+            # Merge with default structure to ensure all keys are present
+            requirements.update({k: v for k, v in parsed.items() if k in requirements})
+    except json.JSONDecodeError:
+        import json_repair
+        try:
+            match = re.search(r'\{.*\}', content.strip(), re.DOTALL)
+            repair_target = match.group(0) if match else content.strip()
+            parsed = json_repair.loads(repair_target)
+            if isinstance(parsed, dict):
+                requirements.update({k: v for k, v in parsed.items() if k in requirements})
+        except Exception as e:
+            logger.error(f"[extractor] Failed to repair JSON for structured requirements: {e}")
+            pass
+            
+    logger.info(f"[extractor] Structured requirements extracted successfully. Domain: {requirements.get('business_domain')}")
+    return requirements

@@ -25,6 +25,7 @@ from services.design.fallback import generate_fallback_design
 from services.design.reduce import generate_global_architecture
 from services.design.nodes import (
     extract_modules,
+    extract_structured_requirements,
     split_document,
     fetch_context_node,
     dba_agent_node,
@@ -35,6 +36,7 @@ from services.design.nodes import (
     save_module_design_node,
     generate_pm_plan,
 )
+from services.design.nodes.validator_node import validate_requirements_llm
 from core.config import MAX_QA_RETRIES, MAX_CONCURRENT_MODULES, VALKEY_HOST, VALKEY_PORT
 import logging
 logger = logging.getLogger(__name__)
@@ -353,11 +355,21 @@ async def generate_system_design(
 
         # ── Run LangGraph MAS workflow (Parallel Processing) ──────────────────
         logger.info("Starting Parallel LangGraph MAS workflow...")
+        yield {"phase": "validation", "status": "started"}
         
         # Build a combined constraints string for the extractor
         extractor_constraints = f"Tech Stack: {tech_stack}\nDesign: {design_principles}\nSecurity: {security_protocols}"
-        modules = await extract_modules(normalized, constraints=extractor_constraints)
-        yield {"phase": "extraction", "status": "complete", "data": {"modules": modules, "count": len(modules)}}
+        
+        extract_modules_task = extract_modules(normalized, constraints=extractor_constraints)
+        extract_reqs_task = extract_structured_requirements(normalized)
+        validate_reqs_task = validate_requirements_llm(normalized)
+        
+        modules, structured_requirements, validation_report = await asyncio.gather(
+            extract_modules_task, extract_reqs_task, validate_reqs_task
+        )
+        
+        yield {"phase": "validation", "status": "complete", "data": {"issues": validation_report.get("issues", [])}}
+        yield {"phase": "extraction", "status": "complete", "data": {"modules": modules, "count": len(modules), "requirements": structured_requirements}}
 
         sem = asyncio.Semaphore(MAX_CONCURRENT_MODULES)
         logger.info(f"Executing module designs in parallel (concurrency limit: {MAX_CONCURRENT_MODULES})...")
@@ -390,6 +402,7 @@ async def generate_system_design(
                         "security_protocols":  security_protocols,
                         "open_questions_answers": open_questions_answers,
                         "cloud_provider":      cloud_provider,
+                        "structured_requirements": structured_requirements,
                     }
                     config = {"configurable": {"thread_id": f"{document_id}_{module_name}"}}
                     
@@ -510,6 +523,7 @@ async def generate_system_design(
                 "securityProtocols":    security_protocols,
                 "openQuestionsAnswers": open_questions_answers,
                 "cloudProvider":        cloud_provider,
+                "projectRequirements":  structured_requirements,
             }
             set_cached_design(document_id, result)
             yield {"phase": "done", "status": "interrupted", "data": result}
@@ -574,6 +588,8 @@ async def generate_system_design(
             "securityProtocols":    security_protocols,
             "openQuestionsAnswers": open_questions_answers,
             "cloudProvider":        cloud_provider,
+            "projectRequirements":  structured_requirements,
+            "validationIssues":     validation_report.get("issues", []),
         }
 
         set_cached_design(document_id, result)
@@ -615,6 +631,7 @@ async def regenerate_module_design(document_id: str, module_name: str) -> Dict[s
     security_protocols = cached_result.get("securityProtocols", "")
     open_questions_answers = cached_result.get("openQuestionsAnswers", "")
     cloud_provider = cached_result.get("cloudProvider", "aws")
+    structured_requirements = cached_result.get("projectRequirements", {})
     request_id = str(uuid.uuid4())
 
     # Temporarily index document chunks to Chroma for semantic queries by the node
@@ -646,6 +663,7 @@ async def regenerate_module_design(document_id: str, module_name: str) -> Dict[s
             "security_protocols":  security_protocols,
             "open_questions_answers": open_questions_answers,
             "cloud_provider":      cloud_provider,
+            "structured_requirements": structured_requirements,
         }
         final_state = await _module_workflow_app.ainvoke(initial_state)
         new_design = final_state.get("module_design")
@@ -802,7 +820,10 @@ async def apply_schema_patch(
         "security_protocols":  cached_result.get("securityProtocols", ""),
         "open_questions_answers": cached_result.get("openQuestionsAnswers", ""),
         "cloud_provider":      cached_result.get("cloudProvider", "aws"),
+        "structured_requirements": cached_result.get("projectRequirements", {}),
     }
+
+    config = {"configurable": {"thread_id": f"{document_id}_{module_name}"}}
 
     # Run API Agent node
     api_res = await api_agent_node(state)

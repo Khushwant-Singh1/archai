@@ -191,3 +191,18 @@ def validate_project_plan(plan: dict) -> dict:
         raise ValueError("Invalid Project Plan structure: missing required keys (effort_estimation, sprint_breakdown, dependency_graph, risk_register)")
     return ProjectPlan(**plan).model_dump(by_alias=True)
 
+
+# --- Validation Models ---
+class ValidationIssue(BaseModel):
+    issue_type: str = Field(description="Type of issue: 'missing', 'contradictory', 'ambiguous', or 'impossible'")
+    description: str = Field(description="Detailed description of the issue found in the requirements")
+    severity: str = Field(description="Severity of the issue: 'high', 'medium', or 'low'")
+    snippet: Optional[str] = Field(default="", description="The exact quote or snippet from the requirement document that has the issue")
+
+class RequirementValidationReport(BaseModel):
+    issues: List[ValidationIssue]
+
+def validate_requirement_report(report: dict) -> dict:
+    if not isinstance(report, dict) or "issues" not in report:
+        raise ValueError("Invalid Validation Report structure: missing 'issues'")
+    return RequirementValidationReport(**report).model_dump(by_alias=True)

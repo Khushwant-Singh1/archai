@@ -38,8 +38,41 @@ Before designing the architecture, perform back-of-the-envelope calculations bas
   - If RPS > 5000 or domains have vastly different scaling needs, use Microservices.
   - Provide a 2-sentence rationale for your choice.
 
-#### 1. High-Level System Architecture Diagram
+#### 1. Design Pattern Analysis & Selection (CRITICAL)
+You must evaluate the SRS context, the scale from Section 0, and the domain complexity to select the appropriate software design patterns. 
+Create a Markdown table with the following columns:
+| Pattern Name | Applies? | Rationale / Trigger |
+|---|---|---|
+| CQRS (Command Query Responsibility Segregation) | Yes/No | (If Yes: "Read:Write ratio is 90:10, requiring independent read scaling". If No: "CRUD is sufficient, CQRS adds unnecessary complexity") |
+| Event Sourcing | Yes/No | (If Yes: "SRS requires strict audit trails of state changes for financial records". If No: "Standard DB state tracking is sufficient") |
+| Saga Pattern | Yes/No | (If Yes: "Cross-module transactions required (e.g., Order -> Inventory -> Payment)". If No: "Transactions are contained within a single module") |
+| Outbox Pattern | Yes/No | (If Yes: "Requires reliable event publishing alongside DB transactions". If No: "No asynchronous event dependencies detected") |
+| Repository Pattern | Yes/No | (Always Yes for clean architecture and testability) |
+| Backend-for-Frontend (BFF) | Yes/No | (If Yes: "Multiple frontend clients (Web, Mobile) with different data needs". If No: "Single client application") |
+| API Gateway / Aggregator | Yes/No | (If Yes: "Microservices architecture requires centralized routing and auth". If No: "Monolith handles routing internally") |
+| Anti-Corruption Layer (ACL) | Yes/No | (If Yes: "Integrating with legacy 3rd party systems". If No: "Greenfield development") |
+
+- **Summary:** Write a 3-sentence summary of how these chosen patterns collectively solve the specific business problems identified in the SRS. If the user requested a pattern (e.g., {DESIGN_PRINCIPLES}) but it is NOT a good fit based on the scale/use case, explicitly state why and suggest a simpler alternative.
+
+#### 2. Non-Functional Requirements (NFR) Analysis (CRITICAL)
+Evaluate the system design against the critical non-functional metrics.
+Create a Markdown table with the following columns:
+| NFR Dimension | Target Metric / Requirement | Architectural Strategy / Mitigation |
+|---|---|---|
+| Scalability | (e.g., "Supports up to 50,000 DAU, 5,000 Peak RPS") | (e.g., "Horizontal pod autoscaling, stateless app nodes") |
+| Availability | (e.g., "99.99% uptime target") | (e.g., "Multi-AZ active-active deployments, ALB health checks") |
+| Latency | (e.g., "P95 < 200ms for read paths") | (e.g., "Redis cache layer for read-heavy endpoints") |
+| Security | (e.g., "Data encryption in transit & rest") | (e.g., "TLS 1.3, KMS-managed keys, WAF rate-limiting") |
+| Fault Tolerance | (e.g., "Graceful degradation on sub-service failure") | (e.g., "Circuit breakers on API calls, SQS dead-letter queues") |
+| Consistency | (e.g., "Strict transactional database records") | (e.g., "PostgreSQL ACID transactions, Eventual consistency for search sync") |
+| Disaster Recovery | (e.g., "RTO < 4 hours, RPO < 1 hour") | (e.g., "Automated database backups, cross-region replication") |
+| Multi-Region | (e.g., "Single-region multi-AZ deployment") | (e.g., "Distributed deployments across AZs, CloudFront edge caching") |
+| Compliance | (e.g., "GDPR/HIPAA compliance triggers") | (e.g., "Column-level PII encryption, audit logs, TLS only") |
+| Cost Optimization | (e.g., "Resource scale-to-zero or optimized capacity") | (e.g., "Serverless workers, auto-scaling cooldown limits, NAT Gateway minimization") |
+
+#### 3. High-Level System Architecture Diagram
 Generate a Mermaid `graph TD` flowchart showing the complete request lifecycle AND inter-service communication.
+- You MUST visually represent the patterns selected in Section 1 (e.g., if Saga was chosen, show the saga orchestrator; if BFF was chosen, show the BFF node between Client and Services).
 CRITICAL RULES FOR MERMAID:
 - DO NOT use generic labels. You MUST use the technologies specified in the Tech Stack ({TECH_STACK}) to label the nodes.
 - **SECURITY PERIMETER:** You MUST include a Web Application Firewall ({WAF_NAME}) and an API Gateway node. 
@@ -48,7 +81,7 @@ CRITICAL RULES FOR MERMAID:
 - Use solid lines (`-->`) for synchronous calls and dashed lines (`-.->`) for asynchronous/event-driven communication (Queue).
 - CRITICAL MERMAID SAFETY RULES: ALWAYS wrap node text labels in double quotes. Example: `Client["Next.js Frontend App"]`. ALWAYS define subgraphs with an ID and a quoted title. Example: `subgraph VPC["Cloud Provider VPC"]`.
 
-#### 2. Network Architecture & Topology Diagram (CRITICAL)
+#### 4. Network Architecture & Topology Diagram (CRITICAL)
 Generate a Mermaid `graph TD` flowchart specifically mapping the Network Topology.
 CRITICAL RULES FOR MERMAID:
 - Use `subgraph` to clearly define network boundaries.
@@ -60,33 +93,33 @@ CRITICAL RULES FOR MERMAID:
 - Show egress flow: `Private Subnet Nodes --> {NAT_NAME} --> {IGW_NAME} --> Internet`.
 - Label nodes with specific tech (e.g., `{LB_LABEL}`).
 
-#### 3. Network Configuration & Routing
+#### 5. Network Configuration & Routing
 - **VPC & Subnets:** Specify the IP range strategy (e.g., 10.0.0.0/16 VPC, 10.0.1.0/24 Public, 10.0.2.0/24 Private).
 - **Security & Firewall Rules ({SG_LABEL}):** List the specific rules and their inbound/outbound setup.
 - **Routing Tables:** Explain how traffic is routed (Public routes to {IGW_NAME}, Private routes to {NAT_NAME}).
 
-#### 4. Infrastructure & Compute Layer
+#### 6. Infrastructure & Compute Layer
 - Specify the containerization and hosting strategy (e.g., Docker, {HOSTING_STRATEGY}).
 - Discuss auto-scaling policies based on the RPS calculated in Section 0.
 
-#### 5. Data Layer & Caching
+#### 7. Data Layer & Caching
 - Specify the primary database setup (e.g., PostgreSQL with Read Replicas if Read QPS is high).
 - **Caching Strategy:** Identify which specific modules/tables need caching and specify the technology and invalidation strategy.
 - **Search Engine:** Propose Elasticsearch/OpenSearch if complex querying is needed.
 
-#### 6. Asynchronous Processing & Queuing System
+#### 8. Asynchronous Processing & Queuing System
 - **Queue Technology:** Recommend RabbitMQ, {QUEUE_TECH}, or Apache Kafka.
 - **Event-Driven Workflows:** List at least 3 cross-module workflows that must be asynchronous.
 - **Background Workers:** Specify how workers consume these queues.
 
-#### 7. Security & Compliance Architecture (CRITICAL)
+#### 9. Security & Compliance Architecture (CRITICAL)
 You MUST explicitly address how the system enforces the user's specific security protocols: {SECURITY_PROTOCOLS}.
 - **Network Security:** WAF rules (SQLi, XSS), DDoS protection ({SHIELD_NAME}).
 - **Application Security:** Rate Limiting (Redis-backed at API Gateway), Backend Only Abstraction.
 - **Identity & Access Management (IAM):** Detail the RBAC implementation.
 - **Data Security:** Encryption at rest ({KMS_NAME}) and in transit (TLS 1.3). Column-level encryption for PII.
 
-#### 8. Threat Model & Mitigations (STRIDE)
+#### 10. Threat Model & Mitigations (STRIDE)
 Provide a Markdown table mapping the STRIDE threat model to specific architectural mitigations:
 | Threat Type | Example Scenario | Architectural Mitigation |
 |---|---|---|
@@ -97,16 +130,17 @@ Provide a Markdown table mapping the STRIDE threat model to specific architectur
 | Denial of Service | ... | ... |
 | Elevation of Privilege | ... | ... |
 
-#### 9. Observability (Logging, Monitoring, Tracing)
+#### 11. Observability (Logging, Monitoring, Tracing)
 - **Centralized Logging:** Propose ELK/Datadog. Specify that auth failures and rate-limit hits MUST be logged.
 - **Metrics & Monitoring:** Prometheus/Grafana alerting thresholds based on RPS.
 - **Distributed Tracing:** Jaeger/OpenTelemetry for tracing requests across services.
 
-#### 10. CI/CD Pipeline
+#### 12. CI/CD Pipeline
 - Propose a GitOps workflow (GitHub Actions / GitLab CI).
 - Pipeline stages: Lint -> Test -> Build Docker Image -> Deploy to Staging -> Integration Tests -> Production Deploy.
 - Discuss database migration strategies (e.g., Alembic zero-downtime migrations).
 """
+
 
 
 def detect_cloud_provider(tech_stack: str) -> str:

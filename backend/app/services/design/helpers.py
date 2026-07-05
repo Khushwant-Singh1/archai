@@ -250,6 +250,20 @@ def build_constraints_block(
     if state.get("open_questions_answers"):
         constraints_block += f"- USER CLARIFICATIONS (ANSWERS TO OPEN QUESTIONS):\n{state['open_questions_answers']}\n"
         
+    reqs = state.get("structured_requirements")
+    if reqs:
+        constraints_block += "\n### SYSTEM-WIDE STRUCTURED REQUIREMENTS\n"
+        if reqs.get("business_domain"):
+            constraints_block += f"- BUSINESS DOMAIN: {reqs['business_domain']}\n"
+        if reqs.get("users"):
+            constraints_block += f"- USERS/ROLES: {', '.join(reqs['users'])}\n"
+        if reqs.get("integrations"):
+            constraints_block += f"- EXTERNAL INTEGRATIONS: {', '.join(reqs['integrations'])}\n"
+        if reqs.get("non_functional_requirements"):
+            constraints_block += f"- NON-FUNCTIONAL REQUIREMENTS:\n  - " + "\n  - ".join(reqs['non_functional_requirements']) + "\n"
+        if reqs.get("constraints"):
+            constraints_block += f"- BUSINESS/TECHNICAL CONSTRAINTS:\n  - " + "\n  - ".join(reqs['constraints']) + "\n"
+        
     if constraints_block == "### STRICT ARCHITECTURAL CONSTRAINTS\n":
         return ""
         

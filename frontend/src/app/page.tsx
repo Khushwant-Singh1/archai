@@ -14,6 +14,7 @@ import { AdvancedConfig } from "@/components/AdvancedConfig";
 import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 import { ModuleSelector } from "@/components/ModuleSelector";
 import { ModuleSpec } from "@/components/ModuleSpec";
+import { StructuredRequirements, ProjectRequirements } from "@/components/StructuredRequirements";
 
 type DomainDesign = {
   module: string;
@@ -51,6 +52,13 @@ type ProjectPlan = {
   risk_register: string;
 };
 
+type ValidationIssue = {
+  issue_type: string;
+  description: string;
+  severity: "high" | "medium" | "low";
+  snippet: string;
+};
+
 type DesignResponse = {
   projectSummary: string;
   assumptions: string[];
@@ -67,6 +75,7 @@ type DesignResponse = {
     k8s_config?: string;
   };
   projectPlan?: ProjectPlan;
+  projectRequirements?: ProjectRequirements;
   documentId?: string;
   selectedChunkCount: number;
   documentLength: number;
@@ -74,6 +83,7 @@ type DesignResponse = {
   documentText?: string;
   modules?: string[];
   domainDesigns?: DomainDesign[];
+  validationIssues?: ValidationIssue[];
 };
 
 type ErrorResponse = {
@@ -100,6 +110,49 @@ const templates = [
     requirements: "A learning platform with course catalogs, student enrollment, lessons progress tracking, quizzes, instructor grading dashboards, and certification generation upon course completion."
   }
 ];
+
+function parseDesignPatterns(markdown: string) {
+  if (!markdown) return [];
+  const lines = markdown.split("\n");
+  const patterns: { name: string; applies: boolean; rationale: string }[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("|") && !trimmed.includes("Pattern Name") && !trimmed.includes("---")) {
+      const parts = line.split("|").map(p => p.trim());
+      if (parts.length >= 4) {
+        const name = parts[1];
+        const appliesStr = parts[2].toLowerCase();
+        const rationale = parts[3];
+        
+        const applies = appliesStr === "yes" || appliesStr.startsWith("yes");
+        patterns.push({ name, applies, rationale });
+      }
+    }
+  }
+  return patterns;
+}
+
+function parseNFRAnalysis(markdown: string) {
+  if (!markdown) return [];
+  const lines = markdown.split("\n");
+  const metrics: { dimension: string; target: string; strategy: string }[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("|") && !trimmed.includes("NFR Dimension") && !trimmed.includes("---")) {
+      const parts = line.split("|").map(p => p.trim());
+      if (parts.length >= 4) {
+        const dimension = parts[1];
+        const target = parts[2];
+        const strategy = parts[3];
+        
+        metrics.push({ dimension, target, strategy });
+      }
+    }
+  }
+  return metrics;
+}
 
 export default function Home() {
   const [requirements, setRequirements] = useState(templates[0].requirements);
@@ -136,7 +189,7 @@ export default function Home() {
   };
   
   // Dashboard Workspace State
-  const [activeTab, setActiveTab] = useState<"architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap">("architecture");
+  const [activeTab, setActiveTab] = useState<"architecture" | "database" | "frontend" | "testing" | "requirements" | "terraform" | "openapi" | "devops" | "roadmap" | "validation">("architecture");
   const [previewMode, setPreviewMode] = useState(true);
   const [copiedFull, setCopiedFull] = useState(false);
   const [copiedReqs, setCopiedReqs] = useState(false);
@@ -588,6 +641,7 @@ export default function Home() {
               previewMode={previewMode}
               onTabChange={setActiveTab}
               onPreviewModeChange={setPreviewMode}
+              hasValidationIssues={(result?.validationIssues?.length ?? 0) > 0}
             />
 
             {/* Viewport Render Area */}
@@ -595,6 +649,10 @@ export default function Home() {
               <div className={`${activeTab === "database" && result.domainDesigns && result.domainDesigns.length > 0 ? "max-w-6xl" : "max-w-4xl"} mx-auto w-full bg-slate-800/60 backdrop-blur-xl border border-white/5 p-6 md:p-8 rounded-2xl animate-slide-up bg-slate-950/40`}>
                 {activeTab === "requirements" ? (
                   <div className="space-y-4">
+                    {result.projectRequirements && (
+                      <StructuredRequirements requirements={result.projectRequirements} />
+                    )}
+                    
                     <div className="flex items-center justify-between border-b border-white/10 pb-4">
                       <h2 className="text-base font-semibold text-slate-100">Original Requirements Document</h2>
                       <button
@@ -885,6 +943,41 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+                ) : activeTab === "validation" ? (
+                  <div className="space-y-6">
+                    <div className="border-b border-white/10 pb-4">
+                      <h2 className="text-base font-semibold text-slate-100">Requirement Validation Issues</h2>
+                      <p className="text-xs text-slate-500 mt-1">Missing, contradictory, ambiguous, or impossible expectations found in your document.</p>
+                    </div>
+                    {result.validationIssues && result.validationIssues.length > 0 ? (
+                      <div className="space-y-4">
+                        {result.validationIssues.map((issue, idx) => (
+                          <div key={idx} className="bg-slate-900 border border-white/5 rounded-xl p-4 shadow-sm flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                issue.severity === "high" ? "bg-red-500/20 text-red-400" :
+                                issue.severity === "medium" ? "bg-orange-500/20 text-orange-400" :
+                                "bg-yellow-500/20 text-yellow-400"
+                              }`}>
+                                {issue.severity}
+                              </span>
+                              <span className="text-sm font-semibold text-white capitalize">{issue.issue_type}</span>
+                            </div>
+                            <p className="text-sm text-slate-300">{issue.description}</p>
+                            {issue.snippet && (
+                              <div className="mt-2 p-3 bg-slate-950 border border-white/10 rounded-lg">
+                                <p className="text-xs text-slate-400 italic">"{issue.snippet}"</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl">
+                        <p className="text-sm text-slate-400">No issues found. Your requirements look solid!</p>
+                      </div>
+                    )}
+                  </div>
                 ) : previewMode ? (
                   (activeTab === "database" || activeTab === "frontend" || activeTab === "testing") && result.domainDesigns && result.domainDesigns.length > 0 ? (() => {
                     const allModulesDisplay = result.modules?.map(name => {
@@ -930,13 +1023,123 @@ export default function Home() {
                       </div>
                     );
                   })() : (
-                    <MarkdownRenderer
-                      content={
-                        activeTab === "architecture"
-                          ? result.systemDesignMarkdown
-                          : result.dataModelMarkdown
-                      }
-                    />
+                    (() => {
+                      const patterns = parseDesignPatterns(result.systemDesignMarkdown);
+                      const appliedPatterns = patterns.filter(p => p.applies);
+                      const nfrs = parseNFRAnalysis(result.systemDesignMarkdown);
+                      return (
+                        <div className="space-y-8">
+                          {activeTab === "architecture" && appliedPatterns.length > 0 && (
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                                <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                </svg>
+                                <h3 className="text-sm font-semibold text-slate-200">Recommended Design Patterns</h3>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {appliedPatterns.map((pattern, idx) => (
+                                  <div 
+                                    key={idx} 
+                                    className="group bg-slate-900/60 border border-white/5 hover:border-cyan-500/30 p-3.5 rounded-xl transition duration-200 shadow-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.05)] cursor-default"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="text-xs font-bold text-slate-100 group-hover:text-cyan-300 transition duration-150">
+                                        {pattern.name}
+                                      </span>
+                                      <span className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex-shrink-0">
+                                        Applied
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                                      {pattern.rationale}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {activeTab === "architecture" && nfrs.length > 0 && (
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                                <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                                <h3 className="text-sm font-semibold text-slate-200">Non-Functional Analysis</h3>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {nfrs.map((nfr, idx) => {
+                                  const dimLower = nfr.dimension.toLowerCase();
+                                  let icon = "⚙️";
+                                  let colorClass = "text-slate-400 border-slate-500/20 bg-slate-500/10";
+                                  if (dimLower.includes("scalability")) {
+                                    icon = "📈";
+                                    colorClass = "text-cyan-400 border-cyan-500/20 bg-cyan-500/10";
+                                  } else if (dimLower.includes("availability")) {
+                                    icon = "⏱️";
+                                    colorClass = "text-emerald-400 border-emerald-500/20 bg-emerald-500/10";
+                                  } else if (dimLower.includes("latency")) {
+                                    icon = "⚡";
+                                    colorClass = "text-amber-400 border-amber-500/20 bg-amber-500/10";
+                                  } else if (dimLower.includes("security")) {
+                                    icon = "🔒";
+                                    colorClass = "text-rose-400 border-rose-500/20 bg-rose-500/10";
+                                  } else if (dimLower.includes("fault tolerance")) {
+                                    icon = "🛡️";
+                                    colorClass = "text-indigo-400 border-indigo-500/20 bg-indigo-500/10";
+                                  } else if (dimLower.includes("consistency")) {
+                                    icon = "💾";
+                                    colorClass = "text-blue-400 border-blue-500/20 bg-blue-500/10";
+                                  } else if (dimLower.includes("disaster recovery")) {
+                                    icon = "🔄";
+                                    colorClass = "text-purple-400 border-purple-500/20 bg-purple-500/10";
+                                  } else if (dimLower.includes("multi-region")) {
+                                    icon = "🌍";
+                                    colorClass = "text-teal-400 border-teal-500/20 bg-teal-500/10";
+                                  } else if (dimLower.includes("compliance")) {
+                                    icon = "📜";
+                                    colorClass = "text-orange-400 border-orange-500/20 bg-orange-500/10";
+                                  } else if (dimLower.includes("cost")) {
+                                    icon = "💰";
+                                    colorClass = "text-green-400 border-green-500/20 bg-green-500/10";
+                                  }
+
+                                  return (
+                                    <div key={idx} className="bg-slate-900/40 border border-white/5 rounded-xl p-4 flex flex-col gap-2 transition duration-200 hover:border-white/10 hover:bg-slate-900/60 shadow-sm bg-slate-950/20">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${colorClass} flex items-center gap-1.5`}>
+                                          <span>{icon}</span>
+                                          <span>{nfr.dimension}</span>
+                                        </span>
+                                      </div>
+                                      <div className="text-xs space-y-2 mt-1">
+                                        <div>
+                                          <span className="text-slate-500 font-semibold block text-[9px] uppercase tracking-wider">Target Metric / Requirement:</span>
+                                          <span className="text-slate-200 block mt-0.5 leading-relaxed">{nfr.target}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-500 font-semibold block text-[9px] uppercase tracking-wider">Architectural Strategy:</span>
+                                          <span className="text-slate-300 block mt-0.5 leading-relaxed">{nfr.strategy}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <MarkdownRenderer
+                            content={
+                              activeTab === "architecture"
+                                ? result.systemDesignMarkdown
+                                : result.dataModelMarkdown
+                            }
+                          />
+                        </div>
+                      );
+                    })()
                   )
                 ) : (
                   <div className="space-y-4">
